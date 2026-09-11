@@ -203,6 +203,8 @@
   if (best >= 50) unlockSkin('pendulum');
   if (!isUnlocked(shape)) { shape = 'meter'; save('shape', shape); }
   let taught = pref('taught', '') === '1', teaching = false, playMode = 'endless', lastScore = 0, lastPerfectPct = 0, lastMaxStreak = 0, lastTier = 0;
+  let bestTower = (() => { try { const a = JSON.parse(pref('bestTower', '[]')); return Array.isArray(a) ? a.map(Number).filter(n => n > 0) : []; } catch { return []; } })();
+  // bestTower stores width as fraction of canvas W (stable across resize / relaunch).
   $('best').textContent = best;
   $('name').value = pref('name', '');
   $('name').addEventListener('input', e => save('name', e.target.value.trim()));
@@ -268,14 +270,36 @@
   // ---------- audio ----------
   let ac = null;
   function audio() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); return ac; }
+  function noiseBurst(a, dur, lpHz, gain, t) {
+    const buf = a.createBuffer(1, Math.max(1, a.sampleRate * dur | 0), a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const src = a.createBufferSource(), lp = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = buf; lp.type = 'lowpass'; lp.frequency.value = lpHz;
+    src.connect(lp).connect(g).connect(a.destination);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    src.start(t); src.stop(t + dur);
+  }
+  function hihat(a, t, gain) {
+    const buf = a.createBuffer(1, a.sampleRate * .04 | 0, a.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const src = a.createBufferSource(), hp = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = buf; hp.type = 'highpass'; hp.frequency.value = 6000;
+    src.connect(hp).connect(g).connect(a.destination);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(.001, t + .04);
+    src.start(t); src.stop(t + .04);
+  }
+  function playKick(a, t, gain) {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(48, t + .12);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(.001, t + .14);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + .14);
+    noiseBurst(a, .06, 220, gain * .45, t);
+  }
   function tone(kind, n) {
     if (!sound) return;
     const a = audio(), t = a.currentTime, g = a.createGain(); g.connect(a.destination);
     if (kind === 'bad') {
-      const buf = a.createBuffer(1, a.sampleRate * .18, a.sampleRate), d = buf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-      const src = a.createBufferSource(), lp = a.createBiquadFilter(); src.buffer = buf; lp.type = 'lowpass'; lp.frequency.value = 160;
-      src.connect(lp).connect(g); g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.001, t + .18); src.start(t); return;
+      noiseBurst(a, .18, 160, .5, t); return;
     }
     const bias = kind === 'perfect' ? 1 + feverTier * .04 : 1;
     const o = a.createOscillator(), f = 330 * Math.pow(2, n / 24) * bias;
@@ -285,14 +309,28 @@
     o.connect(g); o.start(t); o.stop(t + len);
     if (kind === 'perfect') { const o2 = a.createOscillator(), g2 = a.createGain(); o2.frequency.value = f * 3;
       g2.gain.setValueAtTime(.08, t); g2.gain.exponentialRampToValueAtTime(.001, t + .2); o2.connect(g2).connect(a.destination); o2.start(t); o2.stop(t + .2); }
+    else if (kind === 'ok') hihat(a, t, .06 + feverTier * .02);
   }
   function tick() {
     if (!sound) return;
-    const a = audio(), t = a.currentTime, o = a.createOscillator(), g = a.createGain();
-    const hot = feverTier >= 2;
-    o.type = 'sine'; o.frequency.setValueAtTime(hot ? 990 : 880, t);
-    g.gain.setValueAtTime(hot ? .08 : .05, t); g.gain.exponentialRampToValueAtTime(.001, t + (hot ? .055 : .04));
-    o.connect(g).connect(a.destination); o.start(t); o.stop(t + .06);
+    const a = audio(), t = a.currentTime, tier = feverTier;
+    if (holdBeat) {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'triangle'; o.frequency.setValueAtTime(220, t);
+      g.gain.setValueAtTime(.08, t); g.gain.exponentialRampToValueAtTime(.001, t + .18);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + .18);
+      return;
+    }
+    if (tier === 0) {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(880, t);
+      g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.001, t + .04);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + .04);
+      return;
+    }
+    playKick(a, t, tier === 1 ? .18 : tier === 2 ? .26 : .34);
+    if (tier >= 2) hihat(a, t + .02, tier === 2 ? .05 : .09);
+    if (tier >= 3) hihat(a, t + .08, .07);
   }
   function chordStab(tier) {
     if (!sound) return;
@@ -317,7 +355,13 @@
   let reduceMotion = motionMq.matches;
   motionMq.addEventListener?.('change', e => { reduceMotion = e.matches; });
   let blocks, shards, floats, beatStart, beatLen, beatIdx = 0, tapped, alive, flash, camKick, shakeX, shakeY, chromaX, cam, camTarget, perfects, streak, maxStreak, feverTier, edgeGlow, pastPeak, running = false, pulseNow = 0, tNow = 0;
+  let holdArmed = false, holdBeat = false, holdDone = false;
+  // Anchor beat shaves ~0.8% per block down to MIN_PERIOD. From 30 on, every beat is random in 55%..145% of the anchor.
   const periodFor = n => { const b = Math.max(MIN_PERIOD, REST * Math.pow(.992, n)); return n >= 30 ? b * (.55 + .9 * rng()) : b; };
+  const snapThresh = n => {
+    const bonus = Math.min(streak, 8) * .008 * (n >= 30 ? .5 : 1);
+    return Math.max(.85, .94 - bonus);
+  };
   function syncStreakHud() {
     if (streak >= 2) $('streak').textContent = feverTier ? '×' + streak + ' ' + TIER_NAME[feverTier] : '×' + streak;
     else $('streak').textContent = '';
@@ -338,10 +382,17 @@
     blocks = [{ w: W * .62, hue: blockHue(0), q: 1 }]; shards = []; floats = [];
     perfects = 0; streak = 0; maxStreak = 0; feverTier = 0; edgeGlow = 0; pastPeak = false;
     alive = true; flash = 0; camKick = 0; shakeX = 0; shakeY = 0; chromaX = 0;
+    holdArmed = false; holdBeat = false; holdDone = false;
     beatStart = performance.now(); beatLen = periodFor(1); tapped = false; cam = camTarget = 0; $('score').textContent = 0; syncStreakHud();
   }
   const groundY = () => H * .78, towerTopY = i => groundY() - i * BH;
   const headlineFor = n => n <= 0 ? 'Nothing held.' : n < 10 ? 'A stub of a tower.' : n < 25 ? 'The tower is a thread.' : n < 50 ? 'Still climbing.' : n < 100 ? 'The beat held.' : 'A tower of peaks.';
+  function resolveHoldSuccess() {
+    const i = blocks.length - 1, floor = blocks[i].w, cap = i > 0 ? blocks[i - 1].w : floor;
+    blocks[i].w = Math.min(cap, floor * 1.15);
+    pushFloat('HOLD', towerTopY(blocks.length), COOL);
+    holdBeat = false; holdDone = true; holdArmed = false;
+  }
 
   function applyFeverEnter(tier, y) {
     feverTier = tier;
@@ -359,7 +410,13 @@
     if (!running || !alive || tapped) return; tapped = true;
     const phase = Math.min(.9999, Math.round((performance.now() - beatStart) / beatLen * 1e4) / 1e4);
     const n = blocks.length, floor = blocks[n - 1].w;
-    let q = pulseNow; if (q > .94) q = 1; q = Math.max(q, .04);
+    let q = pulseNow;
+    if (holdBeat && !teaching) {
+      q = .04;
+    } else {
+      if (q > snapThresh(n)) q = 1;
+      q = Math.max(q, .04);
+    }
     const w = floor * q, kind = q === 1 ? 'perfect' : q > .7 ? 'ok' : 'bad';
 
     if (teaching) {
@@ -380,6 +437,8 @@
       }
       return;
     }
+
+    if (holdBeat) { holdBeat = false; holdDone = true; holdArmed = false; }
 
     taps.push([beatIdx - beat0, phase]);
     tone(kind, n);
@@ -405,11 +464,15 @@
     if (w < 7) end(n);
   }
   function end(n) {
-    alive = false; $('coach').hidden = true;
+    alive = false; $('coach').hidden = true; holdBeat = false; holdArmed = false;
     const prevBest = best;
     lastScore = n; lastPerfectPct = Math.round(100 * perfects / Math.max(1, n));
     lastMaxStreak = maxStreak; lastTier = feverTier || tierOf(maxStreak);
-    if (n > best) { best = n; save('best', best); }
+    if (n > best) {
+      best = n; save('best', best);
+      bestTower = blocks.map(b => +(b.w / W).toFixed(5));
+      save('bestTower', JSON.stringify(bestTower));
+    }
     bumpDayStreak();
     const unlocked = [];
     if (n >= 15) { const u = unlockSkin('sonar'); if (u) unlocked.push(u); }
@@ -435,8 +498,10 @@
 
   // ---------- the pulse, six ways ----------
   // draws into any ctx; floor & top in that ctx's coordinates (top = y of the next block's slot)
-  function drawPulse(c, id, w, h, p, t, floor, top, dead) {
-    const cx = w / 2, hot = p > .94, col = dead ? COOL : hot ? HOT : P, bh = Math.round(h / 40);
+  function drawPulse(c, id, w, h, p, t, floor, top, dead, atRisk) {
+    const cx = w / 2, hot = p > .94;
+    const col = dead ? COOL : atRisk ? (hot ? '#9ED0E0' : '#6FAFC6') : hot ? HOT : P;
+    const bh = Math.round(h / 40);
     c.fillStyle = col; c.strokeStyle = col; c.lineWidth = 1.5;
     if (id === 'circle') {
       const cy = h * .9, rMax = w * .12, r = rMax * (.12 + .88 * p);
@@ -473,7 +538,12 @@
   // ---------- main frame ----------
   function frame(now) {
     if (paused) beatStart += now - lastNow; lastNow = now;
-    if (alive) while (now - beatStart >= beatLen) { beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; pastPeak = false; }
+    if (alive) while (now - beatStart >= beatLen) {
+      if (running && holdBeat && !tapped && !teaching) resolveHoldSuccess();
+      beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; pastPeak = false;
+      if (holdArmed && !holdDone && !teaching) { holdBeat = true; holdArmed = false; }
+      else holdBeat = false;
+    }
     tNow = (now - beatStart) / beatLen; pulseNow = .5 - .5 * Math.cos(2 * Math.PI * tNow);
     if (running && alive && !paused && tNow >= .5 && !pastPeak) { pastPeak = true; tick(); }
     camTarget = Math.max(0, H * .45 - towerTopY(blocks.length));
@@ -481,10 +551,19 @@
     if (!reduceMotion && camKick) { cam += camKick; camKick = 0; }
     flash *= .86; shakeX *= .78; shakeY *= .78; chromaX *= .85; edgeGlow *= .94;
 
+    const fw = blocks[blocks.length - 1].w;
+    const atRisk = running && alive && !teaching && fw * .04 < 7;
+    if (atRisk && !holdDone && !holdArmed && !holdBeat) holdArmed = true;
+
     ctx.clearRect(0, 0, W, H);
     const glow = .10 + flash * (.35 + Math.min(streak, 8) * .02 + feverTier * .03);
     const g = ctx.createRadialGradient(W / 2, H * .85, 10, W / 2, H * .85, H * .7);
-    g.addColorStop(0, `rgba(242,166,90,${glow})`); g.addColorStop(1, 'rgba(242,166,90,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (atRisk) {
+      g.addColorStop(0, `rgba(111,175,198,${.08 + glow * .35})`); g.addColorStop(1, 'rgba(111,175,198,0)');
+    } else {
+      g.addColorStop(0, `rgba(242,166,90,${glow})`); g.addColorStop(1, 'rgba(242,166,90,0)');
+    }
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     const edgeOn = edgeGlow > .02;
     if (edgeOn) {
       const eg = ctx.createLinearGradient(0, 0, 0, H);
@@ -499,6 +578,13 @@
     ctx.translate(ox, cam + oy);
     ctx.strokeStyle = INK + '.07)'; ctx.lineWidth = 1; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(140,147,168,.7)'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     for (let i = 10; i <= blocks.length + 20; i += 10) { const y = towerTopY(i) + .5; ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(W - 14, y); ctx.stroke(); ctx.fillText(i, 16, y - 8); }
+    if (bestTower.length && running) {
+      ctx.strokeStyle = INK + '.14)'; ctx.lineWidth = 1;
+      for (let i = 0; i < bestTower.length; i++) {
+        const gw = bestTower[i] * W, y = towerTopY(i + 1);
+        ctx.strokeRect(Math.round(W / 2 - gw / 2) + .5, y + .5, Math.max(1, Math.round(gw)) - 1, BH - 2);
+      }
+    }
     for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; ctx.fillStyle = `hsl(${b.hue} 72% ${b.q === 1 ? 62 : b.q > .7 ? 56 : 44}%)`;
       ctx.fillRect(Math.round(W / 2 - b.w / 2), towerTopY(i + 1), Math.max(1, Math.round(b.w)), BH - 1); }
     for (const s of shards) { s.x += s.vx; s.vy += .35; s.y += s.vy; s.a -= .025; ctx.globalAlpha = Math.max(0, s.a); ctx.fillStyle = `hsl(${s.hue} 60% 40%)`; ctx.fillRect(s.x, s.y, s.w, BH - 1); }
@@ -513,14 +599,15 @@
     ctx.globalAlpha = 1; floats = floats.filter(f => f.a > 0);
     ctx.restore();
 
-    const fw = blocks[blocks.length - 1].w;
-    drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive);
+    drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive, atRisk || holdBeat);
+    // floor width marker at the foot — what a perfect tap buys
     ctx.fillStyle = INK + '.25)'; ctx.fillRect(W / 2 - fw / 2, H - 6, fw, 2);
     // Cap stacked glows: skip full-screen flash while edgeGlow is the climax cue
     if (flash > .01 && !edgeOn) {
       ctx.fillStyle = `rgba(255,210,122,${Math.min(.32, flash * (.18 + Math.min(streak, 8) * .01 + feverTier * .015))})`;
       ctx.fillRect(0, 0, W, H);
     }
+    if (atRisk) { ctx.fillStyle = 'rgba(111,175,198,.06)'; ctx.fillRect(0, 0, W, H); }
 
     if (!$('options').hidden) drawOptions();
     if (!$('start').hidden) drawPulsePrev();
