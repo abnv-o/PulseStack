@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>Pulse Stack</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0B0F1A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="icon-512.png">
 <style>
   :root{--ground:#0B0F1A;--ground-2:#121829;--ink:#F3EEE4;--dim:#8C93A8;--pulse:#F2A65A;--hot:#FFD27A;--cool:#6FAFC6;--line:rgba(243,238,228,.10)}
   *{box-sizing:border-box}
@@ -276,6 +281,7 @@
     if (e.code !== 'Space' || e.target.tagName === 'INPUT') return; e.preventDefault();
     if (!$('start').hidden || !$('over').hidden) begin(); else if (!paused) tap(); });
   // Android back: options/leaderboard → the screen behind it; paused → resume; in a run → pause
+  if (location.protocol.startsWith('http') && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
   window.onBack = () => {
     if (!$('options').hidden) { $('optDone').click(); return true; }
     if (!$('lb').hidden) { $('lbDone').click(); return true; }
