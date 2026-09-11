@@ -37,19 +37,27 @@
   .opt.on{border-color:var(--pulse);color:var(--ink)}
   .toggle{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--dim)}
   .toggle b{color:var(--ink)}
+  .hud button{pointer-events:auto;margin:0;padding:8px 14px;font-size:14px;background:transparent;color:var(--dim);border:1px solid var(--line)}
+  input{font:inherit;font-size:16px;color:var(--ink);background:var(--ground-2);border:1px solid var(--line);border-radius:12px;padding:12px 16px;text-align:center;width:100%;max-width:260px;outline:0}
+  input:focus{border-color:var(--pulse)}
+  ol{margin:0;padding:0;list-style:none;width:100%;max-width:300px;font-size:14px}
+  ol li{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line)}
+  ol li.me{color:var(--pulse)}
+  ol li b{font-variant-numeric:tabular-nums}
   .vers{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 10px);font-size:10px;color:var(--dim);letter-spacing:.1em}
 </style>
 </head>
 <body>
 <div id="stage">
   <canvas id="c"></canvas>
-  <div class="hud"><div><div class="n" id="score">0</div><small>height</small></div><div><div class="best" id="best">0</div><small>best</small></div></div>
+  <div class="hud"><div><div class="n" id="score">0</div><small>height</small></div><div style="display:flex;gap:12px;align-items:flex-start"><div><div class="best" id="best">0</div><small>best</small></div><button id="menuBtn" aria-label="Menu">&#9776;</button></div></div>
 
   <div class="overlay" id="start">
     <h1>Pulse<span>Stack</span></h1>
     <p>Tap on the peak of the beat and the block lands full width. Early or late, it lands at the size the pulse was. The tower only ever gets thinner.</p>
+    <input id="name" placeholder="your name" maxlength="12" autocomplete="off">
     <button id="go">Start</button>
-    <button class="ghost" id="optBtn">Options</button>
+    <div class="row"><button class="ghost" id="lbBtn">Leaderboard</button><button class="ghost" id="optBtn">Options</button></div>
     <div class="vers" id="vers"></div>
   </div>
 
@@ -65,7 +73,19 @@
     <div class="big" id="final">0</div>
     <h2>The tower is a thread.</h2>
     <p class="verdict" id="verdict"></p>
-    <div class="row"><button id="again">Again</button><button class="ghost" id="optBtn2">Options</button></div>
+    <div class="row"><button id="again">Again</button><button class="ghost" id="lbBtn2">Leaderboard</button><button class="ghost" id="optBtn2">Options</button></div>
+  </div>
+
+  <div class="overlay" id="lb" hidden>
+    <h2>Leaderboard</h2>
+    <ol id="lbList"></ol>
+    <button id="lbDone">Back</button>
+  </div>
+
+  <div class="overlay" id="menu" hidden>
+    <h2>Paused</h2>
+    <button id="resume">Resume</button>
+    <div class="row"><button class="ghost" id="restart">Restart</button><button class="ghost" id="optBtn3">Options</button><button class="ghost" id="quit">Quit</button></div>
   </div>
 </div>
 
@@ -84,6 +104,15 @@
   const save = (k, v) => { try { localStorage.setItem('ps-' + k, v); } catch {} };
   let shape = pref('shape', 'ghost'), sound = pref('sound', '1') === '1', best = +pref('best', 0);
   $('best').textContent = best;
+  $('name').value = pref('name', '');
+  $('name').addEventListener('input', e => save('name', e.target.value.trim()));
+  const who = () => $('name').value.trim() || 'Player';
+  // ponytail: local-only top 10 in localStorage; a shared board needs a backend
+  const lbGet = () => { try { return JSON.parse(pref('lb', '[]')); } catch { return []; } };
+  function lbAdd(name, n) { const l = lbGet(); l.push({ name, n, t: Date.now() }); l.sort((a, b) => b.n - a.n || a.t - b.t); const top = l.slice(0, 10); save('lb', JSON.stringify(top)); return top.findIndex(e => e.name === name && e.n === n) + 1; }
+  function showLb(back) { $('start').hidden = $('over').hidden = $('menu').hidden = true; $('lb').hidden = false; lbBack = back;
+    const l = lbGet(); $('lbList').innerHTML = l.length ? l.map((e, i) => `<li${e.name === who() ? ' class="me"' : ''}><span>${i + 1}. ${e.name.replace(/[<>&]/g, '')}</span><b>${e.n}</b></li>`).join('') : '<li><span>No runs yet</span></li>'; }
+  let lbBack = 'start', paused = false, lastNow = 0;
   $('vers').textContent = 'v' + (window.Android ? Android.version() : 'web');
 
   // ---------- audio ----------
@@ -133,7 +162,8 @@
     alive = false;
     if (n > best) { best = n; save('best', best); }
     $('best').textContent = best; $('final').textContent = n;
-    $('verdict').textContent = `${n} blocks high, ${Math.round(100 * perfects / Math.max(1, n))}% on the peak.` + (n === best && n > 0 ? ' New best.' : '');
+    const rank = n > 0 ? lbAdd(who(), n) : 0;
+    $('verdict').textContent = `${n} blocks high, ${Math.round(100 * perfects / Math.max(1, n))}% on the peak.` + (n === best && n > 0 ? ' New best.' : '') + (rank ? ` #${rank} on the board.` : '');
     setTimeout(() => { $('over').hidden = false; }, 700);
   }
 
@@ -176,6 +206,7 @@
 
   // ---------- main frame ----------
   function frame(now) {
+    if (paused) beatStart += now - lastNow; lastNow = now;
     if (alive) while (now - beatStart >= beatLen) { beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; }
     tNow = (now - beatStart) / beatLen; pulseNow = .5 - .5 * Math.cos(2 * Math.PI * tNow);
     camTarget = Math.max(0, H * .45 - towerTopY(blocks.length)); cam += (camTarget - cam) * .12; flash *= .86;
@@ -221,18 +252,35 @@
   function showOptions() { $('start').hidden = true; $('over').hidden = true; $('options').hidden = false; paintOn(); $('snd').checked = sound; $('sndV').textContent = sound ? 'on' : 'off'; requestAnimationFrame(sizeOpts); }
   $('snd').addEventListener('change', e => { sound = e.target.checked; save('sound', sound ? '1' : '0'); $('sndV').textContent = sound ? 'on' : 'off'; if (sound) audio(); });
   $('optBtn').addEventListener('click', showOptions); $('optBtn2').addEventListener('click', showOptions);
-  $('optDone').addEventListener('click', () => { $('options').hidden = true; if (!running) $('start').hidden = false; else if (!alive) $('over').hidden = false; });
+  $('optDone').addEventListener('click', () => { $('options').hidden = true; if (paused) $('menu').hidden = false; else if (!running) $('start').hidden = false; else if (!alive) $('over').hidden = false; });
+  $('optBtn3').addEventListener('click', showOptions);
+
+  // ---------- leaderboard + pause menu ----------
+  $('lbBtn').addEventListener('click', () => showLb('start')); $('lbBtn2').addEventListener('click', () => showLb('over'));
+  $('lbDone').addEventListener('click', () => { $('lb').hidden = true; $(lbBack).hidden = false; });
+  function pause() { if (!running || !alive || paused) return; paused = true; $('menu').hidden = false; }
+  function resume() { paused = false; $('menu').hidden = true; }
+  $('menuBtn').addEventListener('click', pause); $('resume').addEventListener('click', resume);
+  $('restart').addEventListener('click', () => { resume(); begin(); });
+  $('quit').addEventListener('click', () => { resume(); running = false; alive = false; reset(); $('start').hidden = false; });
 
   // ---------- wiring ----------
   function size() { const dpr = Math.min(2, devicePixelRatio || 1), r = stage.getBoundingClientRect(), sc = W ? r.width / W : 1;
     W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (blocks && sc !== 1) blocks.forEach(b => b.w *= sc); }
   addEventListener('resize', size); size(); reset(); requestAnimationFrame(frame);
-  function begin() { if (sound) audio(); $('start').hidden = true; $('over').hidden = true; reset(); running = true; }
+  function begin() { if (sound) audio(); $('name').blur(); $('start').hidden = true; $('over').hidden = true; reset(); running = true; }
   $('go').addEventListener('click', begin); $('again').addEventListener('click', begin);
   cv.addEventListener('pointerdown', e => { e.preventDefault(); tap(); });
-  addEventListener('keydown', e => { if (e.code !== 'Space') return; e.preventDefault(); if (!$('start').hidden || !$('over').hidden) begin(); else tap(); });
-  // Android back: from options → the screen behind it; in a run → end it
-  window.onBack = () => { if (!$('options').hidden) { $('optDone').click(); return true; } if (running && alive) { end(blocks.length - 1); return true; } return false; };
+  addEventListener('keydown', e => {
+    if (e.code === 'Escape') { paused ? resume() : pause(); return; }
+    if (e.code !== 'Space' || e.target.tagName === 'INPUT') return; e.preventDefault();
+    if (!$('start').hidden || !$('over').hidden) begin(); else if (!paused) tap(); });
+  // Android back: options/leaderboard → the screen behind it; paused → resume; in a run → pause
+  window.onBack = () => {
+    if (!$('options').hidden) { $('optDone').click(); return true; }
+    if (!$('lb').hidden) { $('lbDone').click(); return true; }
+    if (paused) { resume(); return true; }
+    if (running && alive) { pause(); return true; } return false; };
 })();
 </script>
 </body>
