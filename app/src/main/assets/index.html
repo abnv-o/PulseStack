@@ -143,7 +143,8 @@
 
   // ---------- state ----------
   let blocks, shards, beatStart, beatLen, beatIdx = 0, tapped, alive, flash, cam, camTarget, perfects, running = false, pulseNow = 0, tNow = 0;
-  const periodFor = n => { const b = Math.max(MIN_PERIOD, REST * Math.pow(.93, Math.floor(n / 10))); return n >= 30 && n % 2 ? .62 * b : b; };
+  // Gradual: every block shaves ~0.8% off the beat, down to MIN_PERIOD. From 30 on, ~1 in 3 beats is a random short one (55-75%).
+  const periodFor = n => { const b = Math.max(MIN_PERIOD, REST * Math.pow(.992, n)); return n >= 30 && Math.random() < .35 ? b * (.55 + .2 * Math.random()) : b; };
   function reset() {
     blocks = [{ w: W * .62, hue: 30, q: 1 }]; shards = []; perfects = 0; alive = true; flash = 0;
     beatStart = performance.now(); beatLen = periodFor(1); tapped = false; cam = camTarget = 0; $('score').textContent = 0;
