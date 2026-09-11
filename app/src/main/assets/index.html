@@ -151,7 +151,7 @@
   <div class="overlay" id="menu" hidden>
     <h2>Paused</h2>
     <button id="resume">Resume</button>
-    <div class="row"><button class="ghost" id="restart">Restart</button><button class="ghost" id="optBtn3">Options</button><button class="ghost" id="quit">Quit</button></div>
+    <div class="row"><button class="ghost" id="restart">Restart</button><button class="ghost" id="optBtn3">Pulse</button><button class="ghost" id="quit">Quit</button></div>
   </div>
 </div>
 
@@ -263,7 +263,7 @@
     fetch(url).then(r => r.json()).then(l => { if (Array.isArray(l)) { save(lbKey(lbView), JSON.stringify(l)); lbRender(l); } }).catch(() => {});
   }
   let lbBack = 'start', paused = false, lastNow = 0;
-  $('vers').textContent = 'v' + (window.Android ? Android.version() : 'web');
+  $('vers').textContent = window.Android ? ('v' + Android.version()) : 'web';
 
   // ---------- audio ----------
   let ac = null;
