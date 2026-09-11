@@ -20,6 +20,7 @@
   .hud .n{font-size:44px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
   .hud small{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:4px}
   .hud .best{text-align:right;font-size:18px;font-weight:600;color:var(--dim)}
+  .hud .streak{color:var(--pulse);letter-spacing:.08em;min-height:1em}
   .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
     padding:28px;padding-block:calc(env(safe-area-inset-top) + 28px) calc(env(safe-area-inset-bottom) + 28px);gap:14px;
     background:linear-gradient(180deg,rgba(11,15,26,.55),rgba(11,15,26,.92))}
@@ -41,12 +42,18 @@
   button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line);margin-top:0}
   button:active{transform:scale(.97)}
   #go{width:100%;max-width:320px;min-height:52px;margin-top:0}
+  #daily{width:100%;max-width:320px;min-height:48px;margin-top:0}
   #pulsePrev{width:112px;height:112px;display:block;touch-action:manipulation;cursor:pointer}
   .homeBar{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:320px;padding-top:20px}
   .homeBar button{margin:0;padding:12px 8px;min-height:44px;background:transparent;color:var(--dim);border:0;border-radius:0;letter-spacing:.1em}
   .homeBar button:active{transform:none;color:var(--ink)}
+  .dayStreak{font-size:12px;color:var(--dim);letter-spacing:.06em;min-height:1em}
+  .coach{position:absolute;left:0;right:0;top:42%;text-align:center;pointer-events:none;font-family:system-ui,sans-serif;font-weight:700;font-size:15px;letter-spacing:.04em;color:var(--hot);text-shadow:0 1px 12px rgba(11,15,26,.8)}
+  .coach[hidden]{display:none}
   .vers{font-size:10px;color:var(--dim);letter-spacing:.1em;padding:12px 8px}
   .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  #share{display:none}
+  #share.on{display:inline-block}
   /* options */
   .opts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;max-width:360px}
   .opt{display:flex;flex-direction:column;gap:6px;align-items:center;padding:10px 6px 8px;border-radius:14px;border:1px solid var(--line);background:var(--ground-2);color:var(--dim);font-size:11px}
@@ -67,17 +74,20 @@
 <body>
 <div id="stage">
   <canvas id="c"></canvas>
-  <div class="hud"><div><div class="n" id="score">0</div><small>height</small></div><div style="display:flex;gap:12px;align-items:flex-start"><div><div class="best" id="best">0</div><small>best</small></div><button id="menuBtn" aria-label="Menu">&#9776;</button></div></div>
+  <div class="hud"><div><div class="n" id="score">0</div><small>height</small><small class="streak" id="streak"></small></div><div style="display:flex;gap:12px;align-items:flex-start"><div><div class="best" id="best">0</div><small>best</small></div><button id="menuBtn" aria-label="Menu">&#9776;</button></div></div>
+  <div class="coach" id="coach" hidden>Tap at the peak</div>
 
   <div class="overlay" id="start">
     <div class="homeTop">
       <h1>Pulse<span>Stack</span></h1>
       <p class="tag">Tap the peak. The tower only gets thinner.</p>
+      <div class="dayStreak" id="dayStreak"></div>
     </div>
     <div class="homeMid">
       <canvas id="pulsePrev" width="112" height="112" aria-label="Pulse preview"></canvas>
       <input id="name" placeholder="your name" maxlength="12" autocomplete="off">
       <button id="go">Start</button>
+      <button type="button" class="ghost" id="daily">Daily</button>
     </div>
     <div class="homeBar">
       <button type="button" id="lbBtn">Board</button>
@@ -99,13 +109,13 @@
     <h2 id="headline">The tower is a thread.</h2>
     <p class="verdict" id="verdict"></p>
     <p class="board" id="board"></p>
-    <div class="row"><button id="again">Again</button><button class="ghost" id="lbBtn2">Leaderboard</button><button class="ghost" id="optBtn2">Options</button></div>
+    <div class="row"><button id="again">Again</button><button class="ghost" id="share">Share</button><button class="ghost" id="lbBtn2">Board</button><button class="ghost" id="optBtn2">Pulse</button></div>
   </div>
 
   <div class="overlay" id="lb" hidden>
-    <h2>Leaderboard</h2>
+    <h2 id="lbTitle">Leaderboard</h2>
     <ol id="lbList"></ol>
-    <button id="lbDone">Back</button>
+    <div class="row"><button class="ghost" id="lbMode">Daily</button><button id="lbDone">Back</button></div>
   </div>
 
   <div class="overlay" id="menu" hidden>
@@ -133,35 +143,69 @@
   ];
   const pref = (k, d) => { try { const v = localStorage.getItem('ps-' + k); return v === null ? d : v; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem('ps-' + k, v); } catch {} };
-  let shape = pref('shape', 'ghost'), sound = pref('sound', '1') === '1', best = +pref('best', 0);
+  // New installs default to Meter; anyone who already has an id keeps prior default (ghost) if unset.
+  const returning = !!pref('id', '');
+  let shape = pref('shape', returning ? 'ghost' : 'meter'), sound = pref('sound', '1') === '1', best = +pref('best', 0);
+  let taught = pref('taught', '') === '1', teaching = false, playMode = 'endless', lastScore = 0, lastPerfectPct = 0;
   $('best').textContent = best;
   $('name').value = pref('name', '');
   $('name').addEventListener('input', e => save('name', e.target.value.trim()));
   const who = () => $('name').value.trim() || 'Player';
+  const utcDay = () => new Date().toISOString().slice(0, 10);
+  function syncDayStreakHud() {
+    const s = +pref('dayStreak', '0');
+    $('dayStreak').textContent = s > 1 ? s + ' day streak' : s === 1 ? '1 day streak' : '';
+  }
+  function bumpDayStreak() {
+    const today = utcDay(), last = pref('lastDay', '');
+    let s = +pref('dayStreak', '0');
+    if (last === today) { /* already counted */ }
+    else if (last) {
+      const prev = new Date(last + 'T00:00:00Z'), cur = new Date(today + 'T00:00:00Z');
+      const gap = Math.round((cur - prev) / 864e5);
+      s = gap === 1 ? s + 1 : 1;
+    } else s = 1;
+    save('lastDay', today); save('dayStreak', String(s)); syncDayStreakHud();
+  }
+  syncDayStreakHud();
   // Shared board on a Cloudflare Worker (see worker/); the local copy is the offline fallback.
   const LB_URL = 'https://pulsestack-lb.lotusquants.workers.dev';
-  // Player id: random, made once per install. It is what the board keys on; the name is just a label.
   const pid = pref('id', '') || (v => (save('id', v), v))(crypto.randomUUID ? crypto.randomUUID() : [...Array(32)].map(() => (Math.random() * 16 | 0).toString(16)).join(''));
   const post = (path, body) => fetch(LB_URL + path, { method: 'POST', body: JSON.stringify({ pid, ...body }) }).then(r => r.json());
-  let tok = null;  // run token from /start; the server only accepts a score with one
-  const lbGet = () => { try { const l = JSON.parse(pref('lb', '[]')); return Array.isArray(l) ? l : []; } catch { return []; } };
+  let tok = null;
+  const lbKey = mode => mode === 'daily' ? 'lbDaily' : 'lb';
+  const lbGet = (mode = 'endless') => { try { const l = JSON.parse(pref(lbKey(mode), '[]')); return Array.isArray(l) ? l : []; } catch { return []; } };
   const lbRank = (l, n) => l.findIndex(e => e.id === pid.slice(0, 4) && e.n === n) + 1;
-  function lbAdd(name, n) { const l = lbGet().filter(e => e.id !== pid.slice(0, 4) || e.n >= n); if (!l.some(e => e.id === pid.slice(0, 4))) l.push({ id: pid.slice(0, 4), name, n }); l.sort((a, b) => b.n - a.n); const top = l.slice(0, 10); save('lb', JSON.stringify(top));
+  function lbAdd(name, n) {
+    const mode = playMode;
+    const l = lbGet(mode).filter(e => e.id !== pid.slice(0, 4) || e.n >= n);
+    if (!l.some(e => e.id === pid.slice(0, 4))) l.push({ id: pid.slice(0, 4), name, n });
+    l.sort((a, b) => b.n - a.n); const top = l.slice(0, 10); save(lbKey(mode), JSON.stringify(top));
     const t = tok; tok = null;
     if (!t) { $('board').textContent = 'Offline · local only'; }
     else {
       $('board').textContent = 'Submitting…';
-      post('/score', { tok: t, name, n, taps }).then(l => {
-        if (!Array.isArray(l)) { $('board').textContent = "Couldn't reach the board"; return; }
-        save('lb', JSON.stringify(l));
-        const r = lbRank(l, n);
-        $('board').textContent = r ? `Submitted · #${r} worldwide` : 'Submitted · outside top 10';
+      post('/score', { tok: t, name, n, taps }).then(list => {
+        if (!Array.isArray(list)) { $('board').textContent = "Couldn't reach the board"; return; }
+        save(lbKey(mode), JSON.stringify(list));
+        const r = lbRank(list, n);
+        const tag = mode === 'daily' ? 'daily' : 'worldwide';
+        $('board').textContent = r ? `Submitted · #${r} ${tag}` : 'Submitted · outside top 10';
       }).catch(() => { $('board').textContent = "Couldn't reach the board"; });
     }
-    return lbRank(top, n); }
+    return lbRank(top, n);
+  }
+  let lbView = 'endless';
   function lbRender(l) { $('lbList').innerHTML = l.length ? l.map((e, i) => `<li${e.id === pid.slice(0, 4) ? ' class="me"' : ''}><span>${i + 1}. ${e.name.replace(/[<>&]/g, '')} <small>#${e.id}</small></span><b>${e.n}</b></li>`).join('') : '<li><span>No runs yet</span></li>'; }
-  function showLb(back) { $('start').hidden = $('over').hidden = $('menu').hidden = true; $('lb').hidden = false; lbBack = back;
-    lbRender(lbGet()); fetch(LB_URL).then(r => r.json()).then(l => { if (Array.isArray(l)) { save('lb', JSON.stringify(l)); lbRender(l); } }).catch(() => {}); }
+  function showLb(back, mode = lbView) {
+    lbView = mode === 'daily' ? 'daily' : 'endless';
+    $('start').hidden = $('over').hidden = $('menu').hidden = true; $('lb').hidden = false; lbBack = back;
+    $('lbTitle').textContent = lbView === 'daily' ? 'Daily board' : 'Leaderboard';
+    $('lbMode').textContent = lbView === 'daily' ? 'Endless' : 'Daily';
+    lbRender(lbGet(lbView));
+    const url = lbView === 'daily' ? LB_URL + '/daily' : LB_URL;
+    fetch(url).then(r => r.json()).then(l => { if (Array.isArray(l)) { save(lbKey(lbView), JSON.stringify(l)); lbRender(l); } }).catch(() => {});
+  }
   let lbBack = 'start', paused = false, lastNow = 0;
   $('vers').textContent = 'v' + (window.Android ? Android.version() : 'web');
 
@@ -185,41 +229,85 @@
     if (kind === 'perfect') { const o2 = a.createOscillator(), g2 = a.createGain(); o2.frequency.value = f * 3;
       g2.gain.setValueAtTime(.08, t); g2.gain.exponentialRampToValueAtTime(.001, t + .2); o2.connect(g2).connect(a.destination); o2.start(t); o2.stop(t + .2); }
   }
+  function tick() {
+    if (!sound) return;
+    const a = audio(), t = a.currentTime, o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(880, t);
+    g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.001, t + .04);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + .04);
+  }
 
   // ---------- state ----------
-  let blocks, shards, beatStart, beatLen, beatIdx = 0, tapped, alive, flash, shake, kick, cam, camTarget, perfects, running = false, pulseNow = 0, tNow = 0;
+  let blocks, shards, floats, beatStart, beatLen, beatIdx = 0, tapped, alive, flash, shake, kick, cam, camTarget, perfects, streak, pastPeak, running = false, pulseNow = 0, tNow = 0;
   // Anchor beat shaves ~0.8% per block down to MIN_PERIOD. From 30 on, every beat is random in 55%..145% of the anchor.
   const periodFor = n => { const b = Math.max(MIN_PERIOD, REST * Math.pow(.992, n)); return n >= 30 ? b * (.55 + .9 * rng()) : b; };
+  function syncStreakHud() { $('streak').textContent = streak >= 2 ? '×' + streak : ''; }
+  function pushFloat(text, y, col) { floats.push({ text, y, a: 1, col }); }
   function reset() {
-    blocks = [{ w: W * .62, hue: 30, q: 1 }]; shards = []; perfects = 0; alive = true; flash = 0; shake = 0; kick = 0;
-    beatStart = performance.now(); beatLen = periodFor(1); tapped = false; cam = camTarget = 0; $('score').textContent = 0;
+    blocks = [{ w: W * .62, hue: 30, q: 1 }]; shards = []; floats = []; perfects = 0; streak = 0; pastPeak = false; alive = true; flash = 0; shake = 0; kick = 0;
+    beatStart = performance.now(); beatLen = periodFor(1); tapped = false; cam = camTarget = 0; $('score').textContent = 0; syncStreakHud();
   }
   const groundY = () => H * .78, towerTopY = i => groundY() - i * BH;
   const headlineFor = n => n <= 0 ? 'Nothing held.' : n < 10 ? 'A stub of a tower.' : n < 25 ? 'The tower is a thread.' : n < 50 ? 'Still climbing.' : n < 100 ? 'The beat held.' : 'A tower of peaks.';
 
   function tap() {
     if (!running || !alive || tapped) return; tapped = true;
-    taps.push([beatIdx - beat0, Math.min(.9999, Math.round((performance.now() - beatStart) / beatLen * 1e4) / 1e4)]);
+    const phase = Math.min(.9999, Math.round((performance.now() - beatStart) / beatLen * 1e4) / 1e4);
     const n = blocks.length, floor = blocks[n - 1].w;
     let q = pulseNow; if (q > .94) q = 1; q = Math.max(q, .04);
     const w = floor * q, kind = q === 1 ? 'perfect' : q > .7 ? 'ok' : 'bad';
+
+    if (teaching) {
+      tone(kind, n);
+      if (kind === 'perfect') {
+        taught = true; save('taught', '1'); teaching = false; $('coach').hidden = true;
+        if (navigator.vibrate) navigator.vibrate(12);
+        reset();
+        flash = 1; kick = 14;
+        pushFloat('PERFECT', groundY() - 24, HOT);
+        pushFloat('Early or late shrinks the block.', groundY() - 48, P);
+        taps = []; beat0 = beatIdx; tok = null; rng = rnd;
+        post('/start', { mode: playMode }).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {});
+      } else {
+        streak = 0; syncStreakHud();
+        if (kind === 'bad') shake = 8;
+        if (q > .55) pushFloat(phase < .5 ? 'EARLY' : 'LATE', towerTopY(n), phase < .5 ? COOL : 'rgba(242,166,90,.85)');
+        if (navigator.vibrate) navigator.vibrate(kind === 'bad' ? [30, 20, 30] : 6);
+      }
+      return;
+    }
+
+    taps.push([beatIdx - beat0, phase]);
     tone(kind, n);
-    if (kind === 'perfect') { flash = 1; kick = 14; perfects++; }
-    else if (kind === 'bad') shake = 8;
+    if (kind === 'perfect') {
+      streak++; perfects++;
+      flash = Math.min(1.4, 1 + Math.min(streak, 8) * .05); kick = 14;
+      pushFloat(streak >= 2 ? 'PERFECT ×' + streak : 'PERFECT', towerTopY(n), HOT);
+    } else {
+      streak = 0;
+      if (kind === 'bad') shake = 8;
+      if (q > .55) pushFloat(phase < .5 ? 'EARLY' : 'LATE', towerTopY(n), phase < .5 ? COOL : 'rgba(242,166,90,.85)');
+    }
+    syncStreakHud();
     if (navigator.vibrate) navigator.vibrate(kind === 'perfect' ? 12 : kind === 'bad' ? [30, 20, 30] : 6);
     if (w < floor - 1) { const side = (floor - w) / 2, y = towerTopY(n);
       shards.push({ x: W / 2 - floor / 2, y, w: side, vx: -1.4, vy: -1.5, a: 1, hue: blocks[n - 1].hue });
       shards.push({ x: W / 2 + w / 2, y, w: side, vx: 1.4, vy: -1.5, a: 1, hue: blocks[n - 1].hue }); }
     blocks.push({ w, hue: (30 + n * 4) % 360, q }); $('score').textContent = n;
+    if (n === 10 || n === 25 || n === 50) pushFloat(String(n), towerTopY(n) - 18, P);
+    if (n === best + 1) pushFloat('NEW BEST', towerTopY(n) - (n === 10 || n === 25 || n === 50 ? 34 : 18), HOT);
     if (w < 7) end(n);
   }
   function end(n) {
-    alive = false;
+    alive = false; $('coach').hidden = true;
+    lastScore = n; lastPerfectPct = Math.round(100 * perfects / Math.max(1, n));
     if (n > best) { best = n; save('best', best); }
+    bumpDayStreak();
     $('best').textContent = best; $('final').textContent = n; $('headline').textContent = headlineFor(n);
     $('board').textContent = '';
     const rank = n > 0 ? lbAdd(who(), n) : 0;
-    $('verdict').textContent = `${n} blocks high, ${Math.round(100 * perfects / Math.max(1, n))}% on the peak.` + (n === best && n > 0 ? ' New best.' : '') + (rank ? ` #${rank} on this device.` : '');
+    $('verdict').textContent = `${n} blocks high, ${lastPerfectPct}% on the peak.` + (n === best && n > 0 ? ' New best.' : '') + (rank ? ` #${rank} on this device.` : '');
+    $('share').classList.toggle('on', n > 0);
     setTimeout(() => { $('over').hidden = false; }, 700);
   }
 
@@ -263,13 +351,15 @@
   // ---------- main frame ----------
   function frame(now) {
     if (paused) beatStart += now - lastNow; lastNow = now;
-    if (alive) while (now - beatStart >= beatLen) { beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; }
+    if (alive) while (now - beatStart >= beatLen) { beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; pastPeak = false; }
     tNow = (now - beatStart) / beatLen; pulseNow = .5 - .5 * Math.cos(2 * Math.PI * tNow);
+    if (running && alive && !paused && tNow >= .5 && !pastPeak) { pastPeak = true; tick(); }
     camTarget = Math.max(0, H * .45 - towerTopY(blocks.length)); cam += (camTarget - cam) * .12 + kick; flash *= .86; shake *= .78; kick *= .82;
 
     ctx.clearRect(0, 0, W, H);
+    const glow = .10 + flash * (.35 + Math.min(streak, 8) * .02);
     const g = ctx.createRadialGradient(W / 2, H * .85, 10, W / 2, H * .85, H * .7);
-    g.addColorStop(0, `rgba(242,166,90,${.10 + flash * .35})`); g.addColorStop(1, 'rgba(242,166,90,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    g.addColorStop(0, `rgba(242,166,90,${glow})`); g.addColorStop(1, 'rgba(242,166,90,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
     ctx.save(); ctx.translate(shake > .05 ? (Math.random() - .5) * shake * 2 : 0, cam + (shake > .05 ? (Math.random() - .5) * shake * 2 : 0));
     ctx.strokeStyle = INK + '.07)'; ctx.lineWidth = 1; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(140,147,168,.7)'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
@@ -278,13 +368,20 @@
       ctx.fillRect(Math.round(W / 2 - b.w / 2), towerTopY(i + 1), Math.max(1, Math.round(b.w)), BH - 1); }
     for (const s of shards) { s.x += s.vx; s.vy += .35; s.y += s.vy; s.a -= .025; ctx.globalAlpha = Math.max(0, s.a); ctx.fillStyle = `hsl(${s.hue} 60% 40%)`; ctx.fillRect(s.x, s.y, s.w, BH - 1); }
     ctx.globalAlpha = 1; shards = shards.filter(s => s.a > 0);
+    for (const f of floats) {
+      f.a -= .018; f.y -= .55;
+      ctx.globalAlpha = Math.max(0, f.a);
+      ctx.fillStyle = f.col; ctx.font = '700 13px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(f.text, W / 2, f.y);
+    }
+    ctx.globalAlpha = 1; floats = floats.filter(f => f.a > 0);
     ctx.restore();
 
     const fw = blocks[blocks.length - 1].w;
     drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive);
     // floor width marker at the foot — what a perfect tap buys
     ctx.fillStyle = INK + '.25)'; ctx.fillRect(W / 2 - fw / 2, H - 6, fw, 2);
-    if (flash > .01) { ctx.fillStyle = `rgba(255,210,122,${flash * .18})`; ctx.fillRect(0, 0, W, H); }
+    if (flash > .01) { ctx.fillStyle = `rgba(255,210,122,${Math.min(.28, flash * (.18 + Math.min(streak, 8) * .01))})`; ctx.fillRect(0, 0, W, H); }
 
     if (!$('options').hidden) drawOptions();
     if (!$('start').hidden) drawPulsePrev();
@@ -337,29 +434,71 @@
 
   // ---------- leaderboard + pause menu ----------
   $('lbBtn').addEventListener('click', () => showLb('start')); $('lbBtn2').addEventListener('click', () => showLb('over'));
+  $('lbMode').addEventListener('click', () => showLb(lbBack, lbView === 'daily' ? 'endless' : 'daily'));
   $('lbDone').addEventListener('click', () => { $('lb').hidden = true; $(lbBack).hidden = false; });
-  function pause() { if (!running || !alive || paused) return; paused = true; $('menu').hidden = false; }
+  function pause() { if (!running || !alive || paused || teaching) return; paused = true; $('menu').hidden = false; }
   function resume() { paused = false; $('menu').hidden = true; }
   $('menuBtn').addEventListener('click', pause); $('resume').addEventListener('click', resume);
-  $('restart').addEventListener('click', () => { resume(); begin(); });
-  $('quit').addEventListener('click', () => { resume(); running = false; alive = false; reset(); $('start').hidden = false; });
+  $('restart').addEventListener('click', () => { resume(); begin(playMode); });
+  $('quit').addEventListener('click', () => { resume(); running = false; alive = false; teaching = false; $('coach').hidden = true; reset(); $('start').hidden = false; });
+
+  // ---------- share card ----------
+  function shareCard() {
+    const c = document.createElement('canvas'); c.width = 720; c.height = 900;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0B0F1A'; g.fillRect(0, 0, 720, 900);
+    const rg = g.createRadialGradient(360, 720, 20, 360, 720, 420);
+    rg.addColorStop(0, 'rgba(242,166,90,.22)'); rg.addColorStop(1, 'rgba(242,166,90,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, 720, 900);
+    g.fillStyle = '#F3EEE4'; g.font = '800 54px system-ui,sans-serif'; g.textAlign = 'center';
+    g.fillText('Pulse', 320, 120); g.fillStyle = '#F2A65A'; g.fillText('Stack', 455, 120);
+    g.fillStyle = '#F2A65A'; g.font = '600 160px ui-monospace,monospace'; g.fillText(String(lastScore), 360, 380);
+    g.fillStyle = '#8C93A8'; g.font = '12px ui-monospace,monospace'; g.fillText('HEIGHT', 360, 420);
+    g.fillStyle = '#F3EEE4'; g.font = '600 28px system-ui,sans-serif';
+    g.fillText(lastPerfectPct + '% on the peak', 360, 500);
+    const sn = SHAPES.find(s => s.id === shape);
+    g.fillStyle = '#8C93A8'; g.font = '14px ui-monospace,monospace';
+    g.fillText((playMode === 'daily' ? 'Daily · ' : '') + (sn ? sn.name : shape) + ' · ' + who(), 360, 560);
+    g.fillStyle = '#8C93A8'; g.font = '12px ui-monospace,monospace'; g.fillText('pulsestack', 360, 820);
+    c.toBlob(async blob => {
+      if (!blob) return;
+      const file = new File([blob], 'pulsestack.png', { type: 'image/png' });
+      const text = `PulseStack ${lastScore} · ${lastPerfectPct}% peak` + (playMode === 'daily' ? ' · Daily' : '');
+      try {
+        if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+          await navigator.share({ files: [file], title: 'PulseStack', text }); return;
+        }
+      } catch {}
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pulsestack.png'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2e3);
+    }, 'image/png');
+  }
+  $('share').addEventListener('click', shareCard);
 
   // ---------- wiring ----------
   function size() { const dpr = Math.min(2, devicePixelRatio || 1), r = stage.getBoundingClientRect(), sc = W ? r.width / W : 1;
     W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (blocks && sc !== 1) blocks.forEach(b => b.w *= sc);
     if (!$('start').hidden) sizePulsePrev(); }
   addEventListener('resize', size); size(); reset(); requestAnimationFrame(frame);
-  function begin() { if (sound) audio(); $('name').blur(); $('start').hidden = true; $('over').hidden = true; reset(); running = true;
+  function begin(mode = 'endless') {
+    if (sound) audio(); $('name').blur(); $('start').hidden = true; $('over').hidden = true; reset(); running = true;
+    playMode = mode === 'daily' ? 'daily' : 'endless';
     tok = null; rng = rnd; taps = []; beat0 = beatIdx;
-    post('/start', {}).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {}); }
-  $('go').addEventListener('click', begin); $('again').addEventListener('click', begin);
-  cv.addEventListener('pointerdown', e => { e.preventDefault(); if (e.isTrusted) tap(); });  // ignore dispatchEvent() taps
+    teaching = !taught; $('coach').hidden = !teaching;
+    if (!teaching) post('/start', { mode: playMode }).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {});
+  }
+  $('go').addEventListener('click', () => begin('endless'));
+  $('daily').addEventListener('click', () => begin('daily'));
+  $('again').addEventListener('click', () => begin(playMode));
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); if (e.isTrusted) tap(); });
   addEventListener('keydown', e => {
     if (!e.isTrusted) return;
     if (e.code === 'Escape') { paused ? resume() : pause(); return; }
     if (e.code !== 'Space' || e.target.tagName === 'INPUT') return; e.preventDefault();
-    if (!$('start').hidden || !$('over').hidden) begin(); else if (!paused) tap(); });
-  // Android back: options/leaderboard → the screen behind it; paused → resume; in a run → pause
+    if (!$('start').hidden) begin('endless');
+    else if (!$('over').hidden) begin(playMode);
+    else if (!paused) tap();
+  });
   if (location.protocol.startsWith('http') && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
   window.onBack = () => {
     if (!$('options').hidden) { $('optDone').click(); return true; }
