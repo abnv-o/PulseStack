@@ -1,0 +1,8 @@
+name = "pulsestack-lb"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pulsestack"
+database_id = "08eb9f6c-e847-421d-8705-49a7ab2c5c4b"

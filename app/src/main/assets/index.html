@@ -112,11 +112,16 @@
   $('name').value = pref('name', '');
   $('name').addEventListener('input', e => save('name', e.target.value.trim()));
   const who = () => $('name').value.trim() || 'Player';
-  // ponytail: local-only top 10 in localStorage; a shared board needs a backend
+  // Shared board on a Cloudflare Worker (see worker/); the local copy is the offline fallback.
+  const LB_URL = 'https://pulsestack-lb.lotusquants.workers.dev';
   const lbGet = () => { try { return JSON.parse(pref('lb', '[]')); } catch { return []; } };
-  function lbAdd(name, n) { const l = lbGet(); l.push({ name, n, t: Date.now() }); l.sort((a, b) => b.n - a.n || a.t - b.t); const top = l.slice(0, 10); save('lb', JSON.stringify(top)); return top.findIndex(e => e.name === name && e.n === n) + 1; }
+  const lbRank = (l, name, n) => l.findIndex(e => e.name === name && e.n === n) + 1;
+  function lbAdd(name, n) { const l = lbGet(); l.push({ name, n, t: Date.now() }); l.sort((a, b) => b.n - a.n || a.t - b.t); const top = l.slice(0, 10); save('lb', JSON.stringify(top));
+    fetch(LB_URL, { method: 'POST', body: JSON.stringify({ name, n }) }).then(r => r.json()).then(l => { save('lb', JSON.stringify(l)); const r = lbRank(l, name, n); if (r) $('verdict').textContent += ` #${r} worldwide.`; }).catch(() => {});
+    return lbRank(top, name, n); }
+  function lbRender(l) { $('lbList').innerHTML = l.length ? l.map((e, i) => `<li${e.name === who() ? ' class="me"' : ''}><span>${i + 1}. ${e.name.replace(/[<>&]/g, '')}</span><b>${e.n}</b></li>`).join('') : '<li><span>No runs yet</span></li>'; }
   function showLb(back) { $('start').hidden = $('over').hidden = $('menu').hidden = true; $('lb').hidden = false; lbBack = back;
-    const l = lbGet(); $('lbList').innerHTML = l.length ? l.map((e, i) => `<li${e.name === who() ? ' class="me"' : ''}><span>${i + 1}. ${e.name.replace(/[<>&]/g, '')}</span><b>${e.n}</b></li>`).join('') : '<li><span>No runs yet</span></li>'; }
+    lbRender(lbGet()); fetch(LB_URL).then(r => r.json()).then(l => { save('lb', JSON.stringify(l)); lbRender(l); }).catch(() => {}); }
   let lbBack = 'start', paused = false, lastNow = 0;
   $('vers').textContent = 'v' + (window.Android ? Android.version() : 'web');
 
@@ -169,7 +174,7 @@
     if (n > best) { best = n; save('best', best); }
     $('best').textContent = best; $('final').textContent = n;
     const rank = n > 0 ? lbAdd(who(), n) : 0;
-    $('verdict').textContent = `${n} blocks high, ${Math.round(100 * perfects / Math.max(1, n))}% on the peak.` + (n === best && n > 0 ? ' New best.' : '') + (rank ? ` #${rank} on the board.` : '');
+    $('verdict').textContent = `${n} blocks high, ${Math.round(100 * perfects / Math.max(1, n))}% on the peak.` + (n === best && n > 0 ? ' New best.' : '') + (rank ? ` #${rank} on this device.` : '');
     setTimeout(() => { $('over').hidden = false; }, 700);
   }
 
