@@ -12,8 +12,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // One new versionName per build, shown on the start screen.
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
     buildTypes {
         release {
