@@ -1,8 +1,8 @@
 // Shared leaderboard.
-//   GET  /              → top 10 endless (best per player)
-//   GET  /daily         → top 10 for today's UTC daily
-//   POST /start   {pid, mode?}             → {tok, seed, mode, day?}  mode = endless|daily
-//   POST /score   {tok, pid, name, n, taps} → top 10 for that mode
+//   GET  /              → top 10 lifetime (best per player)
+//   GET  /daily         → top 10 for today (UTC)
+//   POST /start   {pid}                    → {tok, seed}
+//   POST /score   {tok, pid, name, n, taps} → {lifetime, daily}  (every run lands on both boards)
 // taps = [[beat, phase], ...] replayed against the seed (anti-cheat).
 const H = { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type' };
 const J = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: H });
@@ -22,17 +22,11 @@ function replay(seed, taps) {
   return { ms, jitter };
 }
 const dayUTC = (ms = Date.now()) => new Date(ms).toISOString().slice(0, 10);
-const daySeed = day => {
-  let h = 2166136261;
-  for (let i = 0; i < day.length; i++) h = Math.imul(h ^ day.charCodeAt(i), 16777619);
-  return h >>> 0;
-};
 const topEndless = async db => (await db.prepare('SELECT substr(pid,1,4) id, name, MAX(n) n, t FROM scores GROUP BY pid ORDER BY n DESC, t ASC LIMIT 10').all()).results.map(({ t, ...r }) => r);
 const topDaily = async (db, day) => (await db.prepare('SELECT substr(pid,1,4) id, name, MAX(n) n, t FROM daily_scores WHERE day = ? GROUP BY pid ORDER BY n DESC, t ASC LIMIT 10').bind(day).all()).results.map(({ t, ...r }) => r);
 
 async function ensure(db) {
   await db.batch([
-    db.prepare('CREATE TABLE IF NOT EXISTS run_meta (tok TEXT PRIMARY KEY, mode TEXT NOT NULL DEFAULT \'endless\', day TEXT)'),
     db.prepare('CREATE TABLE IF NOT EXISTS daily_scores (pid TEXT NOT NULL, name TEXT NOT NULL, n INTEGER NOT NULL, day TEXT NOT NULL, t INTEGER NOT NULL)'),
     db.prepare('CREATE INDEX IF NOT EXISTS daily_scores_day ON daily_scores (day, n DESC)'),
   ]);
@@ -57,15 +51,9 @@ export default {
       const ip = req.headers.get('cf-connecting-ip') || '?';
       const { c } = await db.prepare('SELECT COUNT(*) c FROM tokens WHERE ip = ? AND t0 > ?').bind(ip, now - 60e3).first();
       if (c >= STARTS_PER_MIN) return J({ error: 'slow down' }, 429);
-      const mode = b.mode === 'daily' ? 'daily' : 'endless';
-      const day = mode === 'daily' ? dayUTC(now) : null;
-      const tok = crypto.randomUUID();
-      const seed = mode === 'daily' ? daySeed(day) : crypto.getRandomValues(new Uint32Array(1))[0];
-      await db.batch([
-        db.prepare('INSERT INTO tokens (tok, pid, ip, t0, seed) VALUES (?, ?, ?, ?, ?)').bind(tok, pid, ip, now, seed),
-        db.prepare('INSERT INTO run_meta (tok, mode, day) VALUES (?, ?, ?)').bind(tok, mode, day),
-      ]);
-      return J({ tok, seed, mode, day });
+      const tok = crypto.randomUUID(), seed = crypto.getRandomValues(new Uint32Array(1))[0];
+      await db.prepare('INSERT INTO tokens (tok, pid, ip, t0, seed) VALUES (?, ?, ?, ?, ?)').bind(tok, pid, ip, now, seed).run();
+      return J({ tok, seed });
     }
 
     if (path === '/score') {
@@ -73,25 +61,17 @@ export default {
       if (!name || !Number.isInteger(n) || n < 1 || n > 10000) return J({ error: 'bad score' }, 400);
       const row = await db.prepare('SELECT pid, t0, used, seed FROM tokens WHERE tok = ?').bind(tok).first();
       if (!row || row.used || row.pid !== pid || now - row.t0 > TOKEN_TTL) return J({ error: 'bad token' }, 403);
-      const meta = await db.prepare('SELECT mode, day FROM run_meta WHERE tok = ?').bind(tok).first();
-      const mode = meta?.mode === 'daily' ? 'daily' : 'endless';
-      const day = meta?.day || dayUTC(row.t0);
       const r = replay(row.seed, b.taps);
-      if (typeof r === 'string' || b.taps.length !== n + 1) return J({ error: 'bad taps' }, 403);
+      if (typeof r === 'string' || b.taps.length !== n) return J({ error: 'bad taps' }, 403);
       if (now - row.t0 < r.ms * SLACK) return J({ error: 'too fast' }, 403);
       if (n >= JITTER_FROM && r.jitter < MIN_JITTER_MS) return J({ error: 'too perfect' }, 403);
-      if (mode === 'daily') {
-        await db.batch([
-          db.prepare('UPDATE tokens SET used = 1 WHERE tok = ?').bind(tok),
-          db.prepare('INSERT INTO daily_scores (pid, name, n, day, t) VALUES (?, ?, ?, ?, ?)').bind(pid, name, n, day, now),
-        ]);
-        return J(await topDaily(db, day));
-      }
+      const day = dayUTC(now);
       await db.batch([
         db.prepare('UPDATE tokens SET used = 1 WHERE tok = ?').bind(tok),
         db.prepare('INSERT INTO scores (pid, name, n, t) VALUES (?, ?, ?, ?)').bind(pid, name, n, now),
+        db.prepare('INSERT INTO daily_scores (pid, name, n, day, t) VALUES (?, ?, ?, ?, ?)').bind(pid, name, n, day, now),
       ]);
-      return J(await topEndless(db));
+      return J({ lifetime: await topEndless(db), daily: await topDaily(db, day) });
     }
     return J({ error: 'not found' }, 404);
   }

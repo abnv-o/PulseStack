@@ -61,8 +61,7 @@
   button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line);margin-top:0}
   button:active{transform:scale(.97)}
   #go{width:100%;max-width:320px;min-height:52px;margin-top:0}
-  #daily{width:100%;max-width:320px;min-height:48px;margin-top:0}
-  #pulsePrev{width:112px;height:112px;display:block;touch-action:manipulation;cursor:pointer}
+    #pulsePrev{width:112px;height:112px;display:block;touch-action:manipulation;cursor:pointer}
   .homeBar{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:320px;padding-top:20px}
   .homeBar button{margin:0;padding:12px 8px;min-height:44px;background:transparent;color:var(--dim);border:0;border-radius:0;letter-spacing:.1em;
     transition:color 160ms var(--ease-out)}
@@ -110,7 +109,6 @@
       <canvas id="pulsePrev" width="112" height="112" aria-label="Pulse preview"></canvas>
       <input id="name" placeholder="your name" maxlength="12" autocomplete="off">
       <button id="go">Start</button>
-      <button type="button" class="ghost" id="daily">Daily</button>
     </div>
     <div class="homeBar">
       <button type="button" id="lbBtn">Board</button>
@@ -145,7 +143,7 @@
   <div class="overlay" id="lb" hidden>
     <h2 id="lbTitle">Leaderboard</h2>
     <ol id="lbList"></ol>
-    <div class="row"><button class="ghost" id="lbMode">Daily</button><button id="lbDone">Back</button></div>
+    <div class="row"><button class="ghost" id="lbMode">Today</button><button id="lbDone">Back</button></div>
   </div>
 
   <div class="overlay" id="menu" hidden>
@@ -202,7 +200,7 @@
   if (best >= 30) unlockSkin('shutter');
   if (best >= 50) unlockSkin('pendulum');
   if (!isUnlocked(shape)) { shape = 'meter'; save('shape', shape); }
-  let taught = pref('taught', '') === '1', teaching = false, playMode = 'endless', lastScore = 0, lastPerfectPct = 0, lastMaxStreak = 0, lastTier = 0;
+  let taught = pref('taught', '') === '1', teaching = false, lastScore = 0, lastPerfectPct = 0, lastMaxStreak = 0, lastTier = 0;
   let bestTower = (() => { try { const a = JSON.parse(pref('bestTower', '[]')); return Array.isArray(a) ? a.map(Number).filter(n => n > 0) : []; } catch { return []; } })();
   // bestTower stores width as fraction of canvas W (stable across resize / relaunch).
   $('best').textContent = best;
@@ -235,31 +233,32 @@
   const lbGet = (mode = 'endless') => { try { const l = JSON.parse(pref(lbKey(mode), '[]')); return Array.isArray(l) ? l : []; } catch { return []; } };
   const lbRank = (l, n) => l.findIndex(e => e.id === pid.slice(0, 4) && e.n === n) + 1;
   function lbAdd(name, n) {
-    const mode = playMode;
-    const l = lbGet(mode).filter(e => e.id !== pid.slice(0, 4) || e.n >= n);
-    if (!l.some(e => e.id === pid.slice(0, 4))) l.push({ id: pid.slice(0, 4), name, n });
-    l.sort((a, b) => b.n - a.n); const top = l.slice(0, 10); save(lbKey(mode), JSON.stringify(top));
+    // one run lands on both boards; local copies are the offline view
+    const tops = ['endless', 'daily'].map(mode => {
+      const l = lbGet(mode).filter(e => e.id !== pid.slice(0, 4) || e.n >= n);
+      if (!l.some(e => e.id === pid.slice(0, 4))) l.push({ id: pid.slice(0, 4), name, n });
+      l.sort((a, b) => b.n - a.n); const top = l.slice(0, 10); save(lbKey(mode), JSON.stringify(top)); return top;
+    });
     const t = tok; tok = null;
     if (!t) { $('board').textContent = 'Offline · local only'; }
     else {
       $('board').textContent = 'Submitting…';
-      post('/score', { tok: t, name, n, taps }).then(list => {
-        if (!Array.isArray(list)) { $('board').textContent = "Couldn't reach the board"; return; }
-        save(lbKey(mode), JSON.stringify(list));
-        const r = lbRank(list, n);
-        const tag = mode === 'daily' ? 'daily' : 'worldwide';
-        $('board').textContent = r ? `Submitted · #${r} ${tag}` : 'Submitted · outside top 10';
+      post('/score', { tok: t, name, n, taps }).then(j => {
+        if (!Array.isArray(j.lifetime)) { $('board').textContent = j.error ? 'Not counted · ' + j.error : "Couldn't reach the board"; return; }
+        save('lb', JSON.stringify(j.lifetime)); save('lbDaily', JSON.stringify(j.daily));
+        const r = lbRank(j.lifetime, n), d = lbRank(j.daily, n);
+        $('board').textContent = 'Submitted' + (r ? ` · #${r} all-time` : '') + (d ? ` · #${d} today` : '') + (r || d ? '' : ' · outside top 10');
       }).catch(() => { $('board').textContent = "Couldn't reach the board"; });
     }
-    return lbRank(top, n);
+    return lbRank(tops[0], n);
   }
   let lbView = 'endless';
   function lbRender(l) { $('lbList').innerHTML = l.length ? l.map((e, i) => `<li${e.id === pid.slice(0, 4) ? ' class="me"' : ''}><span>${i + 1}. ${e.name.replace(/[<>&]/g, '')} <small>#${e.id}</small></span><b>${e.n}</b></li>`).join('') : '<li><span>No runs yet</span></li>'; }
   function showLb(back, mode = lbView) {
     lbView = mode === 'daily' ? 'daily' : 'endless';
     $('start').hidden = $('over').hidden = $('menu').hidden = true; $('lb').hidden = false; lbBack = back;
-    $('lbTitle').textContent = lbView === 'daily' ? 'Daily board' : 'Leaderboard';
-    $('lbMode').textContent = lbView === 'daily' ? 'Endless' : 'Daily';
+    $('lbTitle').textContent = lbView === 'daily' ? 'Today' : 'All-time';
+    $('lbMode').textContent = lbView === 'daily' ? 'All-time' : 'Today';
     lbRender(lbGet(lbView));
     const url = lbView === 'daily' ? LB_URL + '/daily' : LB_URL;
     fetch(url).then(r => r.json()).then(l => { if (Array.isArray(l)) { save(lbKey(lbView), JSON.stringify(l)); lbRender(l); } }).catch(() => {});
@@ -428,7 +427,7 @@
         flash = 1; impulseKick(14);
         pushFloat('Early or late shrinks the block.', groundY() - 48, P);
         taps = []; beat0 = beatIdx; tok = null; rng = rnd;
-        post('/start', { mode: playMode }).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {});
+        post('/start', {}).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {});
       } else {
         onStreakBreak(towerTopY(n)); syncStreakHud();
         if (kind === 'bad') impulseShake();
@@ -675,7 +674,7 @@
   function pause() { if (!running || !alive || paused || teaching) return; paused = true; $('menu').hidden = false; }
   function resume() { paused = false; $('menu').hidden = true; }
   $('menuBtn').addEventListener('click', pause); $('resume').addEventListener('click', resume);
-  $('restart').addEventListener('click', () => { resume(); begin(playMode); });
+  $('restart').addEventListener('click', () => { resume(); begin(); });
   $('quit').addEventListener('click', () => { resume(); running = false; alive = false; teaching = false; $('coach').hidden = true; reset(); $('start').hidden = false; });
 
   // ---------- share card ----------
@@ -694,12 +693,12 @@
     g.fillText(lastPerfectPct + '% on the peak', 360, 500);
     const sn = SHAPES.find(s => s.id === shape);
     g.fillStyle = '#8C93A8'; g.font = '14px ui-monospace,monospace';
-    g.fillText((playMode === 'daily' ? 'Daily · ' : '') + (sn ? sn.name : shape) + ' · ' + who(), 360, 560);
+    g.fillText((sn ? sn.name : shape) + ' · ' + who(), 360, 560);
     g.fillStyle = '#8C93A8'; g.font = '12px ui-monospace,monospace'; g.fillText('pulsestack', 360, 820);
     c.toBlob(async blob => {
       if (!blob) return;
       const file = new File([blob], 'pulsestack.png', { type: 'image/png' });
-      const text = `PulseStack ${lastScore} · ${lastPerfectPct}% peak` + (playMode === 'daily' ? ' · Daily' : '');
+      const text = `PulseStack ${lastScore} · ${lastPerfectPct}% peak`;
       try {
         if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
           await navigator.share({ files: [file], title: 'PulseStack', text }); return;
@@ -716,23 +715,21 @@
     W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (blocks && sc !== 1) blocks.forEach(b => b.w *= sc);
     if (!$('start').hidden) sizePulsePrev(); }
   addEventListener('resize', size); size(); reset(); requestAnimationFrame(frame);
-  function begin(mode = 'endless') {
+  function begin() {
     if (sound) audio(); $('name').blur(); $('start').hidden = true; $('over').hidden = true; reset(); running = true;
-    playMode = mode === 'daily' ? 'daily' : 'endless';
     tok = null; rng = rnd; taps = []; beat0 = beatIdx;
     teaching = !taught; $('coach').hidden = !teaching;
-    if (!teaching) post('/start', { mode: playMode }).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {});
+    if (!teaching) post('/start', {}).then(j => { tok = j.tok || null; if (Number.isInteger(j.seed)) rng = mulberry32(j.seed); }).catch(() => {});
   }
-  $('go').addEventListener('click', () => begin('endless'));
-  $('daily').addEventListener('click', () => begin('daily'));
-  $('again').addEventListener('click', () => begin(playMode));
+  $('go').addEventListener('click', () => begin());
+  $('again').addEventListener('click', () => begin());
   cv.addEventListener('pointerdown', e => { e.preventDefault(); if (e.isTrusted) tap(); });
   addEventListener('keydown', e => {
     if (!e.isTrusted) return;
     if (e.code === 'Escape') { paused ? resume() : pause(); return; }
     if (e.code !== 'Space' || e.target.tagName === 'INPUT') return; e.preventDefault();
-    if (!$('start').hidden) begin('endless');
-    else if (!$('over').hidden) begin(playMode);
+    if (!$('start').hidden) begin();
+    else if (!$('over').hidden) begin();
     else if (!paused) tap();
   });
   if (location.protocol.startsWith('http') && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');

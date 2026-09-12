@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./worker.js', import.meta.url), 'utf8'));
 const { mulberry32, periodFor, replay } = new Function(src.replace('export default', 'const _d =') + '; return { mulberry32, periodFor, replay };')();
-// Simulate a run the way index.html does: beat k has length periodFor(blocks, rng); tap at phase .5 + jitter.
+// Simulate a run the way index.html does: one tap per beat, the failing tap still counts, so score n = taps.length.
 const sim = (seed, n, jitterMs) => { const rng = mulberry32(seed); let blocks = 1, L = periodFor(1, rng); const taps = [];
-  for (let k = 0; k <= n; k++) { const p = Math.min(.9999, Math.max(0, .5 + (jitterMs ? (Math.random() * 2 - 1) * jitterMs : 0) / L)); taps.push([k, p]); blocks++; L = periodFor(blocks, rng); }
+  for (let k = 0; k < n; k++) { const p = Math.min(.9999, Math.max(0, .5 + (jitterMs ? (Math.random() * 2 - 1) * jitterMs : 0) / L)); taps.push([k, p]); blocks++; L = periodFor(blocks, rng); }
   return taps; };
 const human = replay(7, sim(7, 60, 40)), bot = replay(7, sim(7, 60, 0));
 assert.equal(typeof human, 'object'); assert.ok(human.jitter > 6, 'human jitter ' + human.jitter);
