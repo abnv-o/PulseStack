@@ -432,6 +432,11 @@
       shards.push({ x: W / 2 + w / 2, y, w: side, vx: 1.4, vy: -1.5, a: 1, hue: blocks[n - 1].hue }); }
     blocks.push({ w, hue: blockHue(n), q }); $('score').textContent = n;
     if (n === 10 || n === 25 || n === 50) pushFloat(String(n), towerTopY(n) - 18, P);
+    if (n === bestTower.length + 1) for (let i = Math.max(0, n - 7); i < n - 1; i++) {   // break through the ghost: its top rows shatter outward
+      const gw = bestTower[i] * W, y = towerTopY(i + 1), hue = blockHue(i);
+      shards.push({ x: W / 2 - gw / 2, y, w: 10, vx: -2.2, vy: -2, a: .9, hue });
+      shards.push({ x: W / 2 + gw / 2 - 10, y, w: 10, vx: 2.2, vy: -2, a: .9, hue });
+    }
     if (n === best + 1) pushFloat('NEW BEST', towerTopY(n) - (n === 10 || n === 25 || n === 50 ? 34 : 18), HOT);
     if (w < 7) end(n);
   }
