@@ -313,13 +313,6 @@
   function tick() {
     if (!sound) return;
     const a = audio(), t = a.currentTime, tier = feverTier;
-    if (holdBeat) {
-      const o = a.createOscillator(), g = a.createGain();
-      o.type = 'triangle'; o.frequency.setValueAtTime(220, t);
-      g.gain.setValueAtTime(.08, t); g.gain.exponentialRampToValueAtTime(.001, t + .18);
-      o.connect(g).connect(a.destination); o.start(t); o.stop(t + .18);
-      return;
-    }
     if (tier === 0) {
       const o = a.createOscillator(), g = a.createGain();
       o.type = 'sine'; o.frequency.setValueAtTime(880, t);
@@ -354,7 +347,6 @@
   let reduceMotion = motionMq.matches;
   motionMq.addEventListener?.('change', e => { reduceMotion = e.matches; });
   let blocks, shards, floats, beatStart, beatLen, beatIdx = 0, tapped, alive, flash, camKick, shakeX, shakeY, chromaX, cam, camTarget, perfects, streak, maxStreak, feverTier, edgeGlow, pastPeak, running = false, pulseNow = 0, tNow = 0;
-  let holdArmed = false, holdBeat = false, holdDone = false;
   // Anchor beat shaves ~0.8% per block down to MIN_PERIOD. From 30 on, every beat is random in 55%..145% of the anchor.
   const periodFor = n => { const b = Math.max(MIN_PERIOD, REST * Math.pow(.992, n)); return n >= 30 ? b * (.55 + .9 * rng()) : b; };
   const snapThresh = n => {
@@ -381,17 +373,10 @@
     blocks = [{ w: W * .62, hue: blockHue(0), q: 1 }]; shards = []; floats = [];
     perfects = 0; streak = 0; maxStreak = 0; feverTier = 0; edgeGlow = 0; pastPeak = false;
     alive = true; flash = 0; camKick = 0; shakeX = 0; shakeY = 0; chromaX = 0;
-    holdArmed = false; holdBeat = false; holdDone = false;
     beatStart = performance.now(); beatLen = periodFor(1); tapped = false; cam = camTarget = 0; $('score').textContent = 0; syncStreakHud();
   }
   const groundY = () => H * .78, towerTopY = i => groundY() - i * BH;
   const headlineFor = n => n <= 0 ? 'Nothing held.' : n < 10 ? 'A stub of a tower.' : n < 25 ? 'The tower is a thread.' : n < 50 ? 'Still climbing.' : n < 100 ? 'The beat held.' : 'A tower of peaks.';
-  function resolveHoldSuccess() {
-    const i = blocks.length - 1, floor = blocks[i].w, cap = i > 0 ? blocks[i - 1].w : floor;
-    blocks[i].w = Math.min(cap, floor * 1.15);
-    pushFloat('HOLD', towerTopY(blocks.length), COOL);
-    holdBeat = false; holdDone = true; holdArmed = false;
-  }
 
   function applyFeverEnter(tier, y) {
     feverTier = tier;
@@ -409,13 +394,7 @@
     if (!running || !alive || tapped) return; tapped = true;
     const phase = Math.min(.9999, Math.round((performance.now() - beatStart) / beatLen * 1e4) / 1e4);
     const n = blocks.length, floor = blocks[n - 1].w;
-    let q = pulseNow;
-    if (holdBeat && !teaching) {
-      q = .04;
-    } else {
-      if (q > snapThresh(n)) q = 1;
-      q = Math.max(q, .04);
-    }
+    let q = pulseNow; if (q > snapThresh(n)) q = 1; q = Math.max(q, .04);
     const w = floor * q, kind = q === 1 ? 'perfect' : q > .7 ? 'ok' : 'bad';
 
     if (teaching) {
@@ -436,8 +415,6 @@
       }
       return;
     }
-
-    if (holdBeat) { holdBeat = false; holdDone = true; holdArmed = false; }
 
     taps.push([beatIdx - beat0, phase]);
     tone(kind, n);
@@ -463,7 +440,7 @@
     if (w < 7) end(n);
   }
   function end(n) {
-    alive = false; $('coach').hidden = true; holdBeat = false; holdArmed = false;
+    alive = false; $('coach').hidden = true;
     const prevBest = best;
     lastScore = n; lastPerfectPct = Math.round(100 * perfects / Math.max(1, n));
     lastMaxStreak = maxStreak; lastTier = feverTier || tierOf(maxStreak);
@@ -537,12 +514,7 @@
   // ---------- main frame ----------
   function frame(now) {
     if (paused) beatStart += now - lastNow; lastNow = now;
-    if (alive) while (now - beatStart >= beatLen) {
-      if (running && holdBeat && !tapped && !teaching) resolveHoldSuccess();
-      beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; pastPeak = false;
-      if (holdArmed && !holdDone && !teaching) { holdBeat = true; holdArmed = false; }
-      else holdBeat = false;
-    }
+    if (alive) while (now - beatStart >= beatLen) { beatStart += beatLen; beatIdx++; beatLen = periodFor(running ? blocks.length : 1); tapped = false; pastPeak = false; }
     tNow = (now - beatStart) / beatLen; pulseNow = .5 - .5 * Math.cos(2 * Math.PI * tNow);
     if (running && alive && !paused && tNow >= .5 && !pastPeak) { pastPeak = true; tick(); }
     camTarget = Math.max(0, H * .45 - towerTopY(blocks.length));
@@ -552,7 +524,6 @@
 
     const fw = blocks[blocks.length - 1].w;
     const atRisk = running && alive && !teaching && fw * .04 < 7;
-    if (atRisk && !holdDone && !holdArmed && !holdBeat) holdArmed = true;
 
     ctx.clearRect(0, 0, W, H);
     const glow = .10 + flash * (.35 + Math.min(streak, 8) * .02 + feverTier * .03);
@@ -598,7 +569,7 @@
     ctx.globalAlpha = 1; floats = floats.filter(f => f.a > 0);
     ctx.restore();
 
-    drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive, atRisk || holdBeat);
+    drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive, atRisk);
     // floor width marker at the foot — what a perfect tap buys
     ctx.fillStyle = INK + '.25)'; ctx.fillRect(W / 2 - fw / 2, H - 6, fw, 2);
     // Cap stacked glows: skip full-screen flash while edgeGlow is the climax cue
