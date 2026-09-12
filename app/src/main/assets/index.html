@@ -551,9 +551,6 @@
         ctx.fillStyle = `hsl(${blockHue(i)} 40% 60% / ${a})`;
         ctx.fillRect(Math.round(W / 2 - gw / 2), y, Math.max(1, Math.round(gw)), BH - 1);
       }
-      const top = towerTopY(bestTower.length) + .5;
-      ctx.strokeStyle = HOT; ctx.globalAlpha = .55; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(14, top); ctx.lineTo(W - 14, top); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = HOT; ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'right'; ctx.fillText('best ' + bestTower.length, W - 16, top - 8); ctx.globalAlpha = 1;
     }
     for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; ctx.fillStyle = `hsl(${b.hue} 72% ${b.q === 1 ? 62 : b.q > .7 ? 56 : 44}%)`;
       ctx.fillRect(Math.round(W / 2 - b.w / 2), towerTopY(i + 1), Math.max(1, Math.round(b.w)), BH - 1); }
