@@ -474,13 +474,14 @@
 
   // ---------- the pulse, six ways ----------
   // draws into any ctx; floor & top in that ctx's coordinates (top = y of the next block's slot)
-  function drawPulse(c, id, w, h, p, t, floor, top, dead, atRisk) {
+  function drawPulse(c, id, w, h, p, t, floor, top, dead, atRisk, hue = 30) {
     const cx = w / 2, hot = p > .94;
-    const col = dead ? COOL : atRisk ? (hot ? '#9ED0E0' : '#6FAFC6') : hot ? HOT : P;
+    // pulse wears the colour of the block about to be placed; brightens at the peak
+    const col = dead ? COOL : atRisk ? (hot ? '#9ED0E0' : '#6FAFC6') : hot ? `hsl(${hue} 85% 78%)` : `hsl(${hue} 72% 62%)`;
     const bh = Math.round(h / 40);
     c.fillStyle = col; c.strokeStyle = col; c.lineWidth = 1.5;
     if (id === 'circle') {
-      const cy = h * .2, rMax = w * .12, r = rMax * (.12 + .88 * p);
+      const cy = h * .2, rMax = w * .09, r = rMax * (.12 + .88 * p);
       c.strokeStyle = INK + '.16)'; c.lineWidth = 1; c.beginPath(); c.arc(cx, cy, rMax, 0, 7); c.stroke();
       c.beginPath(); c.arc(cx, cy, r, 0, 7); c.fill();
     } else if (id === 'ghost') {
@@ -497,7 +498,7 @@
       c.strokeStyle = INK + '.5)'; c.beginPath(); c.moveTo(cx, y - 12); c.lineTo(cx, y + 12); c.stroke();
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 7 + 5 * p, 0, 7); c.fill();
     } else if (id === 'meter') {
-      const sw = w * .14, sh = h * .2, sx = cx - sw / 2, sy = h * .14, fh = sh * p;
+      const sw = w * .09, sh = h * .2, sx = cx - sw / 2, sy = h * .14, fh = sh * p;
       c.strokeStyle = INK + '.16)'; c.lineWidth = 1; c.strokeRect(sx + .5, sy + .5, sw - 1, sh - 1);
       c.strokeStyle = INK + '.5)'; c.beginPath(); c.moveTo(sx - 8, sy + .5); c.lineTo(sx + sw + 8, sy + .5); c.stroke();
       c.fillStyle = col; c.fillRect(sx + 3, sy + sh - fh, sw - 6, fh);
@@ -571,7 +572,7 @@
     ctx.globalAlpha = 1; floats = floats.filter(f => f.a > 0);
     ctx.restore();
 
-    drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive, atRisk);
+    drawPulse(ctx, shape, W, H, pulseNow, tNow, fw, towerTopY(blocks.length) + cam, tapped || !alive, atRisk, blockHue(blocks.length));
     // floor width marker at the foot — what a perfect tap buys
     ctx.fillStyle = INK + '.25)'; ctx.fillRect(W / 2 - fw / 2, H - 6, fw, 2);
     // Cap stacked glows: skip full-screen flash while edgeGlow is the climax cue
@@ -621,7 +622,7 @@
     c.clearRect(0, 0, w, h);
     const floor = w * .62, bh = Math.round(h / 40), gy = h * .78;
     for (let i = 0; i < 3; i++) { c.fillStyle = `hsl(${blockHue(i)} 72% ${56 - i}%)`; c.fillRect(w / 2 - floor / 2, gy - (i + 1) * bh, floor, bh - 1); }
-    drawPulse(c, shape, w, h, pulseNow, tNow, floor, gy - 3 * bh, false);
+    drawPulse(c, shape, w, h, pulseNow, tNow, floor, gy - 3 * bh, false, false, blockHue(3));
   }
   prev.addEventListener('click', showOptions);
   syncShapeUI();
@@ -630,7 +631,7 @@
     for (const o of optCards) { const { ctx: c, w, h } = o; if (!w) continue; c.clearRect(0, 0, w, h);
       const floor = w * .6, bh = Math.round(h / 40), gy = h * .72;
       for (let i = 0; i < 4; i++) { c.fillStyle = `hsl(${blockHue(i)} 72% ${56 - i}%)`; c.fillRect(w / 2 - floor / 2, gy - (i + 1) * bh, floor, bh - 1); }
-      drawPulse(c, o.s.id, w, h, pulseNow, tNow, floor, gy - 4 * bh, false);
+      drawPulse(c, o.s.id, w, h, pulseNow, tNow, floor, gy - 4 * bh, false, false, blockHue(4));
       if (!isUnlocked(o.s.id)) { c.fillStyle = 'rgba(11,15,26,.55)'; c.fillRect(0, 0, w, h); }
     }
   }
