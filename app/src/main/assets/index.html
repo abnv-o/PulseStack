@@ -475,7 +475,7 @@
     const bh = Math.round(h / 40);
     c.fillStyle = col; c.strokeStyle = col; c.lineWidth = 1.5;
     if (id === 'circle') {
-      const cy = h * .9, rMax = w * .12, r = rMax * (.12 + .88 * p);
+      const cy = h * .2, rMax = w * .12, r = rMax * (.12 + .88 * p);
       c.strokeStyle = INK + '.16)'; c.lineWidth = 1; c.beginPath(); c.arc(cx, cy, rMax, 0, 7); c.stroke();
       c.beginPath(); c.arc(cx, cy, r, 0, 7); c.fill();
     } else if (id === 'ghost') {
@@ -487,12 +487,12 @@
       c.strokeStyle = INK + '.18)'; c.lineWidth = 1; c.beginPath();
       c.moveTo(cx - floor / 2 + .5, y); c.lineTo(cx - floor / 2 + .5, y + hh); c.moveTo(cx + floor / 2 - .5, y); c.lineTo(cx + floor / 2 - .5, y + hh); c.stroke();
     } else if (id === 'pendulum') {
-      const y = h * .9, A = w * .36, dir = beatIdx % 2 ? -1 : 1, x = cx + A * Math.cos(Math.PI * t) * dir;
+      const y = h * .18, A = w * .36, dir = beatIdx % 2 ? -1 : 1, x = cx + A * Math.cos(Math.PI * t) * dir;
       c.strokeStyle = INK + '.16)'; c.lineWidth = 1; c.beginPath(); c.moveTo(cx - A, y); c.lineTo(cx + A, y); c.stroke();
       c.strokeStyle = INK + '.5)'; c.beginPath(); c.moveTo(cx, y - 12); c.lineTo(cx, y + 12); c.stroke();
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 7 + 5 * p, 0, 7); c.fill();
     } else if (id === 'meter') {
-      const sw = w * .14, sh = h * .2, sx = cx - sw / 2, sy = h * .97 - sh, fh = sh * p;
+      const sw = w * .14, sh = h * .2, sx = cx - sw / 2, sy = h * .14, fh = sh * p;
       c.strokeStyle = INK + '.16)'; c.lineWidth = 1; c.strokeRect(sx + .5, sy + .5, sw - 1, sh - 1);
       c.strokeStyle = INK + '.5)'; c.beginPath(); c.moveTo(sx - 8, sy + .5); c.lineTo(sx + sw + 8, sy + .5); c.stroke();
       c.fillStyle = col; c.fillRect(sx + 3, sy + sh - fh, sw - 6, fh);
