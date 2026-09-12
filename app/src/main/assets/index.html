@@ -176,21 +176,17 @@
   const save = (k, v) => { try { localStorage.setItem('ps-' + k, v); } catch {} };
   function loadUnlocks() {
     try {
-      const u = JSON.parse(pref('unlocks', '{"skins":[],"palette":false}'));
-      return { skins: new Set(Array.isArray(u.skins) ? u.skins : []), palette: !!u.palette };
-    } catch { return { skins: new Set(), palette: false }; }
+      const u = JSON.parse(pref('unlocks', '{"skins":[]}'));
+      return { skins: new Set(Array.isArray(u.skins) ? u.skins : []) };
+    } catch { return { skins: new Set() }; }
   }
-  function saveUnlocks() { save('unlocks', JSON.stringify({ skins: [...unlocks.skins], palette: unlocks.palette })); }
+  function saveUnlocks() { save('unlocks', JSON.stringify({ skins: [...unlocks.skins] })); }
   const unlocks = loadUnlocks();
   const isUnlocked = id => FREE_SKINS.has(id) || unlocks.skins.has(id);
   function unlockSkin(id) {
     if (FREE_SKINS.has(id) || unlocks.skins.has(id)) return null;
     unlocks.skins.add(id); saveUnlocks();
     const s = SHAPES.find(x => x.id === id); return s ? s.name : id;
-  }
-  function unlockPalette() {
-    if (unlocks.palette) return null;
-    unlocks.palette = true; saveUnlocks(); return 'Aurora palette';
   }
   // New installs default to Meter; anyone who already has an id keeps prior default (ghost) if unset.
   const returning = !!pref('id', '');
@@ -358,7 +354,7 @@
     else $('streak').textContent = '';
   }
   function pushFloat(text, y, col) { floats.push({ text, y, a: 1, col }); }
-  function blockHue(n) { return unlocks.palette ? (200 + n * 7) % 360 : (30 + n * 4) % 360; }
+  const blockHue = n => (30 + n * 4) % 360; // rainbow, orange up
   function impulseKick(amount) { if (!reduceMotion) camKick = amount; }
   function impulseShake() {
     if (reduceMotion) return;
@@ -454,7 +450,6 @@
     if (n >= 15) { const u = unlockSkin('sonar'); if (u) unlocked.push(u); }
     if (n >= 30) { const u = unlockSkin('shutter'); if (u) unlocked.push(u); }
     if (n >= 50) { const u = unlockSkin('pendulum'); if (u) unlocked.push(u); }
-    if (maxStreak >= 10) { const u = unlockPalette(); if (u) unlocked.push(u); }
     unlocked.forEach(name => pushFloat('Unlocked: ' + name, groundY() - 60, HOT));
 
     $('best').textContent = best; $('final').textContent = n; $('headline').textContent = headlineFor(n);
