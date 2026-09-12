@@ -544,11 +544,17 @@
     ctx.strokeStyle = INK + '.07)'; ctx.lineWidth = 1; ctx.font = '10px ui-monospace, monospace'; ctx.fillStyle = 'rgba(140,147,168,.7)'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     for (let i = 10; i <= blocks.length + 20; i += 10) { const y = towerTopY(i) + .5; ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(W - 14, y); ctx.stroke(); ctx.fillText(i, 16, y - 8); }
     if (bestTower.length && running) {
-      ctx.strokeStyle = INK + '.14)'; ctx.lineWidth = 1;
-      for (let i = 0; i < bestTower.length; i++) {
-        const gw = bestTower[i] * W, y = towerTopY(i + 1);
-        ctx.strokeRect(Math.round(W / 2 - gw / 2) + .5, y + .5, Math.max(1, Math.round(gw)) - 1, BH - 2);
+      // Ghost of the best run: only the rows still ahead, in the row's own hue, fading with distance.
+      const n = blocks.length;
+      for (let i = n; i < bestTower.length; i++) {
+        const gw = bestTower[i] * W, y = towerTopY(i + 1), a = .16 * Math.max(0, 1 - (i - n) / 24);
+        if (a < .01) break;
+        ctx.fillStyle = `hsl(${blockHue(i)} 40% 60% / ${a})`;
+        ctx.fillRect(Math.round(W / 2 - gw / 2), y, Math.max(1, Math.round(gw)), BH - 1);
       }
+      const top = towerTopY(bestTower.length) + .5;
+      ctx.strokeStyle = HOT; ctx.globalAlpha = .55; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(14, top); ctx.lineTo(W - 14, top); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = HOT; ctx.font = '10px ui-monospace, monospace'; ctx.textAlign = 'right'; ctx.fillText('best ' + bestTower.length, W - 16, top - 8); ctx.globalAlpha = 1;
     }
     for (let i = 0; i < blocks.length; i++) { const b = blocks[i]; ctx.fillStyle = `hsl(${b.hue} 72% ${b.q === 1 ? 62 : b.q > .7 ? 56 : 44}%)`;
       ctx.fillRect(Math.round(W / 2 - b.w / 2), towerTopY(i + 1), Math.max(1, Math.round(b.w)), BH - 1); }
