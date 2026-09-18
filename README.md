@@ -21,7 +21,7 @@ npm run build   # → build/
 npm run preview
 ```
 
-GitHub Pages deploys `build/` via `.github/workflows/pages.yml`.
+Cloudflare Workers (static assets) serves `build/` at https://pulsestack.lotusquants.workers.dev. `npm run deploy` ships it by hand; `.github/workflows/deploy.yml` does the same on push (needs a `CLOUDFLARE_API_TOKEN` repo secret).
 
 ## Android (Capacitor)
 
