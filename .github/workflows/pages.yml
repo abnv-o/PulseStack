@@ -1,4 +1,4 @@
-# Deploys the same index.html the APK ships to GitHub Pages on every push.
+# Deploys the SvelteKit static build to GitHub Pages on every push.
 name: pages
 on:
   push:
@@ -16,8 +16,17 @@ jobs:
       url: ${{ steps.d.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          PUBLIC_LB_URL: https://pulsestack-lb.lotusquants.workers.dev
+          PUBLIC_APP_VERSION: ${{ github.sha }}
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: app/src/main/assets
+          path: build
       - id: d
         uses: actions/deploy-pages@v4
