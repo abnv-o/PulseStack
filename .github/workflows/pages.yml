@@ -25,6 +25,7 @@ jobs:
         env:
           PUBLIC_LB_URL: https://pulsestack-lb.lotusquants.workers.dev
           PUBLIC_APP_VERSION: ${{ github.sha }}
+          BASE_PATH: /PulseStack
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build

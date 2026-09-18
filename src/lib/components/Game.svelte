@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { base } from '$app/paths';
 	import { GameEngine, type HudState } from '$lib/game/engine';
 	import { appVersionLabel, Cap } from '$lib/game/platform';
 	import { env } from '$env/dynamic/public';
@@ -91,7 +92,7 @@
 		})();
 
 		if (location.protocol.startsWith('http') && 'serviceWorker' in navigator) {
-			navigator.serviceWorker.register('/sw.js').catch(() => {});
+			navigator.serviceWorker.register(`${base}/sw.js`).catch(() => {});
 		}
 
 		return () => {
