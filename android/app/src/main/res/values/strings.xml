@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pulse Stack</string>
+    <string name="title_activity_main">Pulse Stack</string>
+    <string name="package_name">app.pulsestack</string>
+    <string name="custom_url_scheme">app.pulsestack</string>
+</resources>
