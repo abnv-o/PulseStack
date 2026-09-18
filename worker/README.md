@@ -1,12 +1,9 @@
 # PulseStack leaderboard (Cloudflare Worker + D1)
 
-The game posts scores to this Worker. Live URL used by the app:
+**Production deploys** are automatic via GitHub Actions — see [`.github/DEPLOY.md`](../.github/DEPLOY.md).  
+This file is for local/manual Worker + D1 setup.
 
-`https://pulsestack-lb.lotusquants.workers.dev`
-
-If that already works for you, you only need this guide when creating a **new** Worker or rotating the D1 database.
-
-## One-time setup
+## One-time setup (new account / new D1)
 
 1. Install Wrangler and log in:
 
